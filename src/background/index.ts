@@ -3,8 +3,10 @@
 
 import { listAccounts } from '../lib/db/accountsRepo';
 import { runSyncChunk } from './syncOrchestrator';
+import { resumeStaleJobs } from './bulkJobRunner';
 import {
   PERIODIC_SYNC_ALARM,
+  RESUME_JOBS_ALARM,
   accountIdFromContinueAlarm,
   registerAlarms,
   scheduleSyncContinuation,
@@ -19,6 +21,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.runtime.onStartup.addListener(() => {
   registerAlarms();
+  void resumeStaleJobs();
 });
 
 async function syncAccount(accountId: string): Promise<void> {
@@ -36,6 +39,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       const accounts = await listAccounts();
       for (const account of accounts) void syncAccount(account.id);
     })();
+    return;
+  }
+
+  if (alarm.name === RESUME_JOBS_ALARM) {
+    void resumeStaleJobs();
     return;
   }
 
