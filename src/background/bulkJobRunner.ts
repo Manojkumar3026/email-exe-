@@ -10,13 +10,7 @@ import { adjustSenderAfterRemoval } from '../lib/db/sendersRepo';
 import { createJob, getJob, updateJob, listJobsByStatus } from '../lib/db/jobsRepo';
 import { recordHistoryEntry } from '../lib/db/historyRepo';
 import { makeSenderKey } from '../types/sender';
-import {
-  archiveMessages,
-  markRead,
-  permanentlyDeleteMessages,
-  trashMessages,
-  type BatchModifyResult,
-} from '../lib/gmail/messages';
+import { getAdapter, type BatchActionResult, type ProviderAdapter } from '../lib/providerAdapter';
 import type { Account } from '../types/account';
 import type { BulkActionJob, BulkActionType } from '../types/job';
 
@@ -24,19 +18,20 @@ const CHUNK_SIZE = 200;
 const STALE_JOB_THRESHOLD_MS = 90_000;
 
 async function runProviderAction(
+  adapter: ProviderAdapter,
   account: Account,
   actionType: BulkActionType,
   ids: string[],
-): Promise<BatchModifyResult> {
+): Promise<BatchActionResult> {
   switch (actionType) {
     case 'delete':
-      return trashMessages(account, ids);
+      return adapter.trash(account, ids);
     case 'permanent_delete':
-      return permanentlyDeleteMessages(account, ids);
+      return adapter.permanentDelete(account, ids);
     case 'archive':
-      return archiveMessages(account, ids);
+      return adapter.archive(account, ids);
     case 'mark_read':
-      return markRead(account, ids);
+      return adapter.markRead(account, ids);
     default:
       throw new Error(`Bulk job runner does not support action "${actionType}" (handled elsewhere).`);
   }
@@ -109,6 +104,7 @@ export async function processJobToCompletion(jobId: string): Promise<void> {
     return;
   }
 
+  const adapter = await getAdapter(account.provider);
   let totalBytesFreed = 0;
 
   while (job && job.cursor < job.totalCount) {
@@ -117,9 +113,9 @@ export async function processJobToCompletion(jobId: string): Promise<void> {
 
     const nextChunk = current.targetMessageIds.slice(current.cursor, current.cursor + CHUNK_SIZE);
 
-    let result: BatchModifyResult;
+    let result: BatchActionResult;
     try {
-      result = await runProviderAction(account, current.actionType, nextChunk);
+      result = await runProviderAction(adapter, account, current.actionType, nextChunk);
     } catch (error) {
       result = { successIds: [], failedIds: nextChunk };
       console.error('[inbox-cleaner-ai] bulk job chunk failed', error);

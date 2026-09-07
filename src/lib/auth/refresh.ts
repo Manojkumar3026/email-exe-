@@ -4,6 +4,7 @@
 import type { Account } from '../../types/account';
 import { getAccessToken, getTokenMeta } from './tokenStore';
 import { refreshGoogleToken } from './googleAuth';
+import { refreshMicrosoftToken } from './msalPkce';
 
 const EXPIRY_SAFETY_MARGIN_MS = 2 * 60 * 1000;
 
@@ -21,6 +22,5 @@ export async function ensureFreshAccessToken(account: Account): Promise<string> 
     return refreshGoogleToken(account.id);
   }
 
-  // Outlook PKCE refresh lands in milestone 5 (src/lib/auth/msalPkce.ts).
-  throw new Error(`Token refresh not yet implemented for provider "${account.provider}".`);
+  return refreshMicrosoftToken(account.id);
 }

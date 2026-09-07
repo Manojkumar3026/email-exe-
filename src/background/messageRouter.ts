@@ -5,7 +5,7 @@ import { scheduleSyncContinuation } from './alarms';
 import { createJob, getJob, requestCancel } from '../lib/db/jobsRepo';
 import { processJobToCompletion, retryFailedIds } from './bulkJobRunner';
 import { getAccount } from '../lib/db/accountsRepo';
-import { createBlockSenderFilter } from '../lib/gmail/filters';
+import { getAdapter } from '../lib/providerAdapter';
 
 async function handleSyncNow(accountId: string): Promise<{ ok: true }> {
   const result = await runSyncChunk(accountId);
@@ -42,7 +42,8 @@ async function handleBlockSender(
 ): Promise<{ ok: true; jobId: string }> {
   const account = await getAccount(accountId);
   if (!account) throw new Error(`Unknown account ${accountId}`);
-  await createBlockSenderFilter(account, senderEmail);
+  const adapter = await getAdapter(account.provider);
+  await adapter.blockSender(account, senderEmail);
   const job = await createJob(accountId, 'delete', existingMessageIds);
   void processJobToCompletion(job.id);
   return { ok: true, jobId: job.id };
