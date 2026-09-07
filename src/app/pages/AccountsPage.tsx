@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useAccounts, useConnectGoogleAccount, useDisconnectAccount } from '../../hooks/useAccounts';
+import { useSyncNow } from '../../hooks/useSync';
 import { listMessageIds, getMessagesMetadata } from '../../lib/gmail/messages';
+import { formatDistanceFromNow } from '../../lib/util/formatBytes';
 import type { Account } from '../../types/account';
 
 function TestFetchPanel({ account }: { account: Account }) {
@@ -43,6 +45,7 @@ export default function AccountsPage() {
   const { data: accounts, isLoading } = useAccounts();
   const connectGoogle = useConnectGoogleAccount();
   const disconnect = useDisconnectAccount();
+  const syncNow = useSyncNow();
 
   return (
     <div className="space-y-6">
@@ -82,15 +85,30 @@ export default function AccountsPage() {
                 <p className="text-sm font-medium">{account.emailAddress}</p>
                 <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   {account.provider} · {account.status}
+                  {account.lastSyncAt && ` · synced ${formatDistanceFromNow(account.lastSyncAt)}`}
                 </p>
               </div>
-              <button
-                onClick={() => disconnect.mutate(account.id)}
-                className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                Disconnect
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => syncNow.mutate(account.id)}
+                  disabled={syncNow.isPending}
+                  className="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {syncNow.isPending ? 'Syncing…' : 'Sync now'}
+                </button>
+                <button
+                  onClick={() => disconnect.mutate(account.id)}
+                  className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Disconnect
+                </button>
+              </div>
             </div>
+            {syncNow.isError && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                {syncNow.error instanceof Error ? syncNow.error.message : 'Sync failed'}
+              </p>
+            )}
             {account.provider === 'gmail' && <TestFetchPanel account={account} />}
           </li>
         ))}

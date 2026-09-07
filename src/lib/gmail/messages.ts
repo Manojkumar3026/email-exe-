@@ -1,7 +1,7 @@
 import type { Account } from '../../types/account';
 import type { EmailMessage } from '../../types/email';
 import { chunk } from '../util/chunk';
-import { gmailFetchJson } from './client';
+import { GmailApiError, gmailFetchJson } from './client';
 import { GMAIL_QUOTA_UNITS, takeQuota } from './quota';
 
 interface GmailListResponse {
@@ -32,6 +32,15 @@ export interface ListPage {
   resultSizeEstimate?: number;
 }
 
+interface GmailProfileResponse {
+  emailAddress: string;
+  historyId: string;
+}
+
+export async function getProfile(account: Account): Promise<GmailProfileResponse> {
+  return gmailFetchJson<GmailProfileResponse>(account, '/users/me/profile');
+}
+
 export async function listMessageIds(
   account: Account,
   opts: { pageToken?: string; maxResults?: number; q?: string; labelIds?: string[] } = {},
@@ -53,6 +62,59 @@ export async function listMessageIds(
     nextPageToken: response.nextPageToken,
     resultSizeEstimate: response.resultSizeEstimate,
   };
+}
+
+interface GmailHistoryResponse {
+  history?: {
+    messagesAdded?: { message: { id: string } }[];
+    messagesDeleted?: { message: { id: string } }[];
+  }[];
+  nextPageToken?: string;
+  historyId?: string;
+}
+
+export interface HistoryDelta {
+  addedIds: string[];
+  deletedIds: string[];
+  nextPageToken?: string;
+  historyId?: string;
+  /** True when Gmail reports the startHistoryId is too old — caller must fall back to a full sync. */
+  historyExpired: boolean;
+}
+
+export async function listHistoryDelta(
+  account: Account,
+  startHistoryId: string,
+  pageToken?: string,
+): Promise<HistoryDelta> {
+  await takeQuota(account.id, GMAIL_QUOTA_UNITS.historyList);
+  const params = new URLSearchParams({ startHistoryId, maxResults: '500' });
+  if (pageToken) params.set('pageToken', pageToken);
+
+  try {
+    const response = await gmailFetchJson<GmailHistoryResponse>(
+      account,
+      `/users/me/history?${params.toString()}`,
+    );
+    const addedIds: string[] = [];
+    const deletedIds: string[] = [];
+    for (const entry of response.history ?? []) {
+      for (const added of entry.messagesAdded ?? []) addedIds.push(added.message.id);
+      for (const deleted of entry.messagesDeleted ?? []) deletedIds.push(deleted.message.id);
+    }
+    return {
+      addedIds,
+      deletedIds,
+      nextPageToken: response.nextPageToken,
+      historyId: response.historyId,
+      historyExpired: false,
+    };
+  } catch (error) {
+    if (error instanceof GmailApiError && error.status === 404) {
+      return { addedIds: [], deletedIds: [], historyExpired: true };
+    }
+    throw error;
+  }
 }
 
 function headerValue(headers: GmailHeader[] | undefined, name: string): string | undefined {
