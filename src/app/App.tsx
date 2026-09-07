@@ -1,4 +1,5 @@
 import AppShell from './layouts/AppShell';
+import Toaster from '../components/ui/Toaster';
 import { useRoute } from './router';
 import DashboardPage from './pages/DashboardPage';
 import SendersPage from './pages/SendersPage';
@@ -20,6 +21,7 @@ export default function App() {
       {route === 'analytics' && <AnalyticsPage />}
       {route === 'accounts' && <AccountsPage />}
       {route === 'settings' && <SettingsPage />}
+      <Toaster />
     </AppShell>
   );
 }

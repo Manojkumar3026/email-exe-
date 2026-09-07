@@ -1,13 +1,15 @@
-import { useDashboardStats } from '../../hooks/useDashboardStats';
+import { useDashboardStats, useSenders } from '../../hooks/useDashboardStats';
 import { useAccounts } from '../../hooks/useAccounts';
 import { formatBytes } from '../../lib/util/formatBytes';
 import { CATEGORY_LABELS } from '../../types/category';
 import StatCard from '../../components/ui/StatCard';
 import Skeleton from '../../components/ui/Skeleton';
+import CleanupRecommendationsPanel from '../../components/CleanupRecommendationsPanel';
 
 export default function DashboardPage() {
   const { data: accounts } = useAccounts();
   const { stats, isLoading } = useDashboardStats();
+  const { data: senders } = useSenders(accounts?.[0]?.id);
 
   if (!accounts || accounts.length === 0) {
     return (
@@ -57,6 +59,8 @@ export default function DashboardPage() {
           />
         ))}
       </div>
+
+      {accounts[0] && senders && <CleanupRecommendationsPanel accountId={accounts[0].id} senders={senders} />}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <h3 className="mb-3 text-sm font-semibold">Top senders</h3>

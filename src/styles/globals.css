@@ -5,9 +5,29 @@
 @layer base {
   :root {
     color-scheme: light;
+    --chart-1: #2a78d6; /* blue */
+    --chart-2: #eb6834; /* orange */
+    --chart-3: #1baf7a; /* aqua */
+    --chart-4: #eda100; /* yellow */
+    --chart-5: #e87ba4; /* magenta */
+    --chart-6: #008300; /* green */
+    --chart-7: #4a3aa7; /* violet */
+    --chart-other: #9a9890; /* neutral gray for folded "Other" slice */
+    --chart-sequential: #2a78d6; /* single hue for magnitude-only bars */
+    --chart-grid: #e2e8f0;
   }
   html.dark {
     color-scheme: dark;
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --chart-6: #008300;
+    --chart-7: #9085e9;
+    --chart-other: #6b6a63;
+    --chart-sequential: #3987e5;
+    --chart-grid: #334155;
   }
   body {
     @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;

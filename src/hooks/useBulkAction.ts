@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getJob } from '../lib/db/jobsRepo';
 import { useJobStore } from '../store/useJobStore';
+import { useToastStore } from '../store/useToastStore';
 import type { BulkActionType } from '../types/job';
 import type { BlockSenderMessage, RetryJobMessage, RuntimeMessage, StartBulkJobMessage } from '../types/messages';
 
@@ -60,9 +61,11 @@ export function useCancelJob() {
 }
 
 const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'failed']);
+const toastedJobIds = new Set<string>();
 
 export function useJobProgress(jobId: string | null) {
   const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
 
   return useQuery({
     queryKey: ['job', jobId],
@@ -71,7 +74,21 @@ export function useJobProgress(jobId: string | null) {
     refetchInterval: (query) => {
       const job = query.state.data;
       if (!job || TERMINAL_STATUSES.has(job.status)) {
-        if (job) queryClient.invalidateQueries({ queryKey: ['senders'] });
+        if (job) {
+          queryClient.invalidateQueries({ queryKey: ['senders'] });
+          if (!toastedJobIds.has(job.id)) {
+            toastedJobIds.add(job.id);
+            if (job.status === 'completed') {
+              addToast(
+                `${job.successCount.toLocaleString()} emails ${job.actionType.replace('_', ' ')}d` +
+                  (job.failedCount > 0 ? ` (${job.failedCount} failed)` : ''),
+                job.failedCount > 0 ? 'error' : 'success',
+              );
+            } else if (job.status === 'failed') {
+              addToast(job.errorMessage ?? 'Bulk action failed', 'error');
+            }
+          }
+        }
         return false;
       }
       return 500;
