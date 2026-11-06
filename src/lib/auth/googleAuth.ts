@@ -8,6 +8,7 @@ import { getAccessToken as readAccessToken, setTokens, clearTokens } from './tok
 const GOOGLE_TOKEN_ASSUMED_TTL_MS = 55 * 60 * 1000; // getAuthToken doesn't expose exact expiry
 
 const GMAIL_SCOPES = [
+  'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/gmail.labels',
@@ -27,30 +28,89 @@ async function storeGoogleTokens(accountId: string, token: string): Promise<void
   });
 }
 
+async function fetchUserEmail(token: string): Promise<string | undefined> {
+  let apiErrorMessage: string | undefined;
+
+  // 1. Try standard userinfo endpoint
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { email?: string };
+      if (data.email) return data.email;
+    }
+  } catch {
+    // Ignore
+  }
+
+  // 2. Try Gmail API profile (accessible via gmail.readonly scope)
+  try {
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { emailAddress?: string };
+      if (data.emailAddress) return data.emailAddress;
+    } else {
+      const errText = await res.text();
+      console.error('Gmail API profile check failed:', res.status, errText);
+      try {
+        const errJson = JSON.parse(errText);
+        if (errJson?.error?.message) {
+          apiErrorMessage = errJson.error.message;
+        }
+      } catch {
+        apiErrorMessage = errText;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to call Gmail API profile endpoint:', err);
+  }
+
+  // 3. Try chrome.identity.getProfileUserInfo
+  try {
+    const profile = await chrome.identity.getProfileUserInfo({
+      accountStatus: chrome.identity.AccountStatus.ANY,
+    });
+    if (profile.email) return profile.email;
+  } catch {
+    // Ignore
+  }
+
+  if (apiErrorMessage) {
+    throw new Error(`Google API responded with error: ${apiErrorMessage}`);
+  }
+
+  return undefined;
+}
+
 export async function connectGoogleAccount(): Promise<Account> {
   const token = await getAuthTokenAsync(true);
   if (!token) throw new Error('Google sign-in was cancelled or returned no token.');
 
-  const profile = await chrome.identity.getProfileUserInfo({
-    accountStatus: chrome.identity.AccountStatus.ANY,
-  });
-  if (!profile.email) {
+  try {
+    const email = await fetchUserEmail(token);
+    if (!email) {
+      throw new Error(
+        'Could not determine the Google account email. Please check your connection and try again.',
+      );
+    }
+
+    const accountId = makeAccountId('gmail', email);
+    await storeGoogleTokens(accountId, token);
+
+    return {
+      id: accountId,
+      provider: 'gmail',
+      emailAddress: email,
+      connectedAt: Date.now(),
+      status: 'connected',
+    };
+  } catch (err) {
     await chrome.identity.removeCachedAuthToken({ token });
-    throw new Error(
-      'Could not determine the Google account email. Make sure you are signed into Chrome.',
-    );
+    throw err;
   }
-
-  const accountId = makeAccountId('gmail', profile.email);
-  await storeGoogleTokens(accountId, token);
-
-  return {
-    id: accountId,
-    provider: 'gmail',
-    emailAddress: profile.email,
-    connectedAt: Date.now(),
-    status: 'connected',
-  };
 }
 
 /** Forces Chrome to fetch a fresh token, discarding whatever it has cached. */

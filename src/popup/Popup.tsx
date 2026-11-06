@@ -4,7 +4,7 @@ function openDashboard() {
 
 export default function Popup() {
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex w-[340px] min-h-[420px] flex-col gap-4 p-4">
       <header className="flex items-center gap-2">
         <div className="h-8 w-8 rounded-lg bg-brand-600" />
         <div>

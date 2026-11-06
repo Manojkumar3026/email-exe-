@@ -17,8 +17,8 @@ export function registerAlarms(): void {
 
 /** Schedules a short one-shot alarm to resume an account's sync shortly after this
  *  invocation ends, respecting the service worker's idle-termination window. */
-export function scheduleSyncContinuation(accountId: string): void {
-  chrome.alarms.create(continueSyncAlarmName(accountId), { delayInMinutes: 0.5 });
+export function scheduleSyncContinuation(accountId: string, delayInMinutes = 0.8): void {
+  chrome.alarms.create(continueSyncAlarmName(accountId), { delayInMinutes });
 }
 
 export function accountIdFromContinueAlarm(alarmName: string): string | null {

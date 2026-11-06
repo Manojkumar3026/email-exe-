@@ -30,6 +30,11 @@ export class TokenBucket {
       await new Promise((resolve) => setTimeout(resolve, Math.max(waitMs, 20)));
     }
   }
+
+  penalize(waitMs = 5000): void {
+    this.tokens = -Math.ceil((waitMs / 1000) * this.refillPerSecond);
+    this.lastRefillAt = Date.now();
+  }
 }
 
 const buckets = new Map<string, TokenBucket>();

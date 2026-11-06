@@ -121,14 +121,65 @@ function headerValue(headers: GmailHeader[] | undefined, name: string): string |
   return headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value;
 }
 
-function parseFromHeader(value: string | undefined): { name?: string; email: string } {
-  if (!value) return { email: 'unknown@unknown' };
-  const match = value.match(/^\s*"?([^"<]*)"?\s*<([^>]+)>\s*$/);
-  if (match) {
-    const name = match[1].trim();
-    return { name: name || undefined, email: match[2].trim().toLowerCase() };
+function cleanDisplayName(name: string): string {
+  let s = name.trim();
+  while (
+    (s.startsWith('"') && s.endsWith('"') && s.length >= 2) ||
+    (s.startsWith("'") && s.endsWith("'") && s.length >= 2) ||
+    (s.startsWith('\\"') && s.endsWith('\\"') && s.length >= 4)
+  ) {
+    if (s.startsWith('\\"') && s.endsWith('\\"')) {
+      s = s.slice(2, -2).trim();
+    } else if (
+      (s.startsWith('"') && s.endsWith('"')) ||
+      (s.startsWith("'") && s.endsWith("'"))
+    ) {
+      s = s.slice(1, -1).trim();
+    } else {
+      break;
+    }
   }
-  return { email: value.trim().toLowerCase() };
+  return s.replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
+}
+
+export function parseFromHeader(value: string | undefined): { name?: string; email: string } {
+  if (!value) return { email: 'unknown@unknown' };
+
+  let trimmed = value.trim();
+  // Strip outer quotes wrapping the entire header e.g. "\"Sender\" <email@domain.com>"
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.includes('<')) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+
+  // Look for email address inside the trailing <...>
+  const angleMatch = trimmed.match(/^(.*?)\s*<([^>]+)>\s*$/s);
+  if (angleMatch) {
+    const rawName = angleMatch[1].trim();
+    const rawEmail = angleMatch[2].trim().toLowerCase();
+    const cleanName = cleanDisplayName(rawName);
+
+    return {
+      name: cleanName || undefined,
+      email: rawEmail,
+    };
+  }
+
+  // No angle brackets: clean up display name / email
+  const clean = cleanDisplayName(trimmed);
+
+  // If it contains an email pattern somewhere inside
+  const emailMatch = clean.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+  if (emailMatch) {
+    const email = emailMatch[1].toLowerCase();
+    const beforeEmail = clean.slice(0, emailMatch.index).trim();
+    const cleanName = cleanDisplayName(beforeEmail);
+    return {
+      name: cleanName || undefined,
+      email,
+    };
+  }
+
+  return { email: clean.toLowerCase() || 'unknown@unknown' };
 }
 
 export function toEmailMessage(account: Account, resource: GmailMessageResource): EmailMessage {
@@ -164,7 +215,7 @@ export function toEmailMessage(account: Account, resource: GmailMessageResource)
 export async function getMessagesMetadata(
   account: Account,
   ids: string[],
-  concurrency = 10,
+  concurrency = 2,
 ): Promise<EmailMessage[]> {
   const results: EmailMessage[] = [];
   const queue = [...ids];
@@ -204,7 +255,8 @@ async function batchModifyChunk(
       body: JSON.stringify({ ids, ...body }),
     });
     return { successIds: ids, failedIds: [] };
-  } catch {
+  } catch (error) {
+    console.error('[inbox-cleaner-ai] batchModify failed', error);
     return { successIds: [], failedIds: ids };
   }
 }
@@ -222,9 +274,39 @@ export async function batchModify(
   };
 }
 
-/** Soft delete: moves messages to Trash (recoverable), matching the extension's default. */
-export function trashMessages(account: Account, ids: string[]): Promise<BatchModifyResult> {
-  return batchModify(account, ids, { addLabelIds: ['TRASH'] });
+/**
+ * Soft delete: moves messages to Trash via Gmail's users.messages.trash endpoint.
+ * Note: Gmail API's batchModify explicitly rejects adding the system label TRASH (400 Bad Request: Invalid label).
+ * Individual trash requests run with bounded concurrency and respect the shared rate limiter.
+ */
+export async function trashMessages(
+  account: Account,
+  ids: string[],
+  concurrency = 5,
+): Promise<BatchModifyResult> {
+  const successIds: string[] = [];
+  const failedIds: string[] = [];
+  const queue = [...ids];
+
+  async function worker() {
+    for (;;) {
+      const id = queue.shift();
+      if (!id) return;
+      try {
+        await takeQuota(account.id, GMAIL_QUOTA_UNITS.messagesTrash);
+        await gmailFetchJson(account, `/users/me/messages/${encodeURIComponent(id)}/trash`, {
+          method: 'POST',
+        });
+        successIds.push(id);
+      } catch (err) {
+        console.error(`[inbox-cleaner-ai] failed to trash message ${id}`, err);
+        failedIds.push(id);
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
+  return { successIds, failedIds };
 }
 
 export function archiveMessages(account: Account, ids: string[]): Promise<BatchModifyResult> {

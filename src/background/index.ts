@@ -13,14 +13,18 @@ import {
 } from './alarms';
 import './messageRouter';
 
+import { sanitizeStoredData } from '../lib/db/sanitize';
+
 console.log('[inbox-cleaner-ai] background service worker started');
 
 chrome.runtime.onInstalled.addListener(() => {
   registerAlarms();
+  void sanitizeStoredData();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   registerAlarms();
+  void sanitizeStoredData();
   void resumeStaleJobs();
 });
 
@@ -30,6 +34,11 @@ async function syncAccount(accountId: string): Promise<void> {
     if (result.hasMore) scheduleSyncContinuation(accountId);
   } catch (error) {
     console.error(`[inbox-cleaner-ai] sync failed for ${accountId}`, error);
+    const msg = String(error).toLowerCase();
+    if (msg.includes('quota') || msg.includes('rate limit') || msg.includes('429')) {
+      // Allow Google's 60-second quota window to clear by rescheduling in 2 minutes
+      scheduleSyncContinuation(accountId, 2.0);
+    }
   }
 }
 

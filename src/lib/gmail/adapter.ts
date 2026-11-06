@@ -13,7 +13,8 @@ import {
   trashMessages,
 } from './messages';
 
-const PAGE_SIZE = 250;
+// 25 messages * 5 quota units = 125 units per chunk, comfortably under the 250 units/min per-user cap
+const PAGE_SIZE = 25;
 
 async function runFullSyncChunk(account: Account, state: SyncCursorState): Promise<SyncChunkOutcome> {
   const page = await listMessageIds(account, { pageToken: state.cursor, maxResults: PAGE_SIZE });

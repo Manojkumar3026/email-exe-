@@ -3,6 +3,8 @@
 
 import type { Account, Provider } from '../types/account';
 import type { EmailMessage } from '../types/email';
+import { gmailAdapter } from './gmail/adapter';
+import { outlookAdapter } from './outlook/adapter';
 
 export interface BatchActionResult {
   successIds: string[];
@@ -32,13 +34,13 @@ export interface ProviderAdapter {
   blockSender(account: Account, senderEmail: string): Promise<void>;
 }
 
-const adapters = new Map<Provider, () => Promise<ProviderAdapter>>([
-  ['gmail', async () => (await import('./gmail/adapter')).gmailAdapter],
-  ['outlook', async () => (await import('./outlook/adapter')).outlookAdapter],
+const adapters = new Map<Provider, ProviderAdapter>([
+  ['gmail', gmailAdapter],
+  ['outlook', outlookAdapter],
 ]);
 
 export async function getAdapter(provider: Provider): Promise<ProviderAdapter> {
-  const loader = adapters.get(provider);
-  if (!loader) throw new Error(`No provider adapter registered for "${provider}"`);
-  return loader();
+  const adapter = adapters.get(provider);
+  if (!adapter) throw new Error(`No provider adapter registered for "${provider}"`);
+  return adapter;
 }

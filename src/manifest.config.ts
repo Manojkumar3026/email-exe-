@@ -33,6 +33,7 @@ export default defineManifest({
   oauth2: {
     client_id: env.VITE_GOOGLE_CLIENT_ID || '<GOOGLE_OAUTH_CLIENT_ID>.apps.googleusercontent.com',
     scopes: [
+      'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.modify',
       'https://www.googleapis.com/auth/gmail.labels',
@@ -40,6 +41,6 @@ export default defineManifest({
   },
   content_security_policy: {
     extension_pages:
-      "script-src 'self'; object-src 'self'; style-src 'self'; connect-src https://gmail.googleapis.com https://www.googleapis.com https://graph.microsoft.com https://login.microsoftonline.com",
+      "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https://gmail.googleapis.com https://www.googleapis.com https://graph.microsoft.com https://login.microsoftonline.com",
   },
 });
